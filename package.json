@@ -1,7 +1,20 @@
 {
   "name": "pi-acp-adapter",
   "version": "0.1.0",
-  "description": "Generic ACP v1 stdio delegation extension for Pi",
+  "description": "Token-efficient ACP v1 delegation adapter for Pi coding agent",
+  "author": {
+    "name": "SyJarvis",
+    "email": "jarvisshangye@gmail.com",
+    "url": "https://github.com/SyJarvis"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SyJarvis/pi-acp-adapter.git"
+  },
+  "homepage": "https://github.com/SyJarvis/pi-acp-adapter#readme",
+  "bugs": {
+    "url": "https://github.com/SyJarvis/pi-acp-adapter/issues"
+  },
   "type": "module",
   "types": "./index.ts",
   "exports": {
@@ -19,12 +32,16 @@
     "LICENSE"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run typecheck && npm test"
   },
   "keywords": [
     "pi-package",
