@@ -31,6 +31,11 @@ With no adapter environment variables, each `acp_delegate` call starts the insta
 
 The adapter does not run `npx`, install packages at delegation time, or keep an ACP child alive between calls.
 
+## Examples
+
+See the [default Codex ACP example](examples/codex/README.md) for a portable
+launcher and a read-only smoke-test workflow in any target repository.
+
 ## Configuration
 
 All overrides are process environment variables read when a delegation starts:
