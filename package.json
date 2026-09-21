@@ -1,7 +1,7 @@
 {
-  "name": "pi-acp-adapter",
+  "name": "pi-acp-delegate",
   "version": "0.1.0",
-  "description": "Token-efficient ACP v1 delegation adapter for Pi coding agent",
+  "description": "Delegate tasks from Pi to ACP v1 coding agents",
   "author": {
     "name": "SyJarvis",
     "email": "jarvisshangye@gmail.com",
@@ -9,11 +9,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SyJarvis/pi-acp-adapter.git"
+    "url": "git+https://github.com/SyJarvis/pi-acp-delegate.git"
   },
-  "homepage": "https://github.com/SyJarvis/pi-acp-adapter#readme",
+  "homepage": "https://github.com/SyJarvis/pi-acp-delegate#readme",
   "bugs": {
-    "url": "https://github.com/SyJarvis/pi-acp-adapter/issues"
+    "url": "https://github.com/SyJarvis/pi-acp-delegate/issues"
   },
   "type": "module",
   "types": "./index.ts",

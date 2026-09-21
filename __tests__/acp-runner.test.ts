@@ -22,7 +22,7 @@ function fixtureRun(mode: string): {
   config: AgentConfig;
   readEvents(): FixtureEvent[];
 } {
-  const directory = mkdtempSync(resolve(tmpdir(), "pi-acp-adapter-"));
+  const directory = mkdtempSync(resolve(tmpdir(), "pi-acp-delegate-"));
   tempDirs.push(directory);
   const logPath = resolve(directory, "events.jsonl");
   return {
@@ -75,7 +75,7 @@ describe("runAcpTask", () => {
     expect(initialize).toMatchObject({
       protocolVersion: acp.PROTOCOL_VERSION,
     });
-    expect(initialize?.clientInfo).toEqual({ name: "pi-acp-adapter", version: "0.1.0" });
+    expect(initialize?.clientInfo).toEqual({ name: "pi-acp-delegate", version: "0.1.0" });
     expect(events.find(event => event.event === "session/new")).toMatchObject({
       cwd: process.cwd(),
       mcpServers: [],

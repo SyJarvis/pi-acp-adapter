@@ -1,6 +1,8 @@
-# pi-acp-adapter
+# pi-acp-delegate
 
-A Pi extension that delegates one focused task to a short-lived Agent Client Protocol (ACP) v1 agent over stdio. The default agent is the package-local `@agentclientprotocol/codex-acp@1.12.0` executable; no runtime `npx` download is used.
+A Pi extension that delegates focused tasks from Pi to short-lived Agent Client Protocol (ACP) v1 coding agents over stdio. The default agent is the package-local `@agentclientprotocol/codex-acp@1.12.0` executable; no runtime `npx` download is used.
+
+This package makes Pi the ACP client; it does not expose Pi as an ACP agent or server.
 
 ## Requirements
 
@@ -13,20 +15,20 @@ A Pi extension that delegates one focused task to a short-lived Agent Client Pro
 Install the published package from npm:
 
 ```sh
-pi install npm:pi-acp-adapter
+pi install npm:pi-acp-delegate
 ```
 
 For a temporary trial without changing Pi settings:
 
 ```sh
-pi -e npm:pi-acp-adapter
+pi -e npm:pi-acp-delegate
 ```
 
 For source or local development:
 
 ```sh
-git clone https://github.com/SyJarvis/pi-acp-adapter.git
-cd pi-acp-adapter
+git clone https://github.com/SyJarvis/pi-acp-delegate.git
+cd pi-acp-delegate
 npm install
 pi install .
 ```

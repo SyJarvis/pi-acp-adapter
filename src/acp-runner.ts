@@ -13,7 +13,7 @@ import {
 
 const CANCEL_GRACE_MS = 300;
 const CLOSE_GRACE_MS = 300;
-const CLIENT_INFO: acp.Implementation = { name: "pi-acp-adapter", version: "0.1.0" };
+const CLIENT_INFO: acp.Implementation = { name: "pi-acp-delegate", version: "0.1.0" };
 
 export interface AcpRunResult {
   readonly text: string;
@@ -84,7 +84,7 @@ export async function runAcpTask(options: AcpRunOptions): Promise<AcpRunResult> 
       Readable.toWeb(process.child.stdout) as unknown as ReadableStream<Uint8Array>,
     );
 
-    connection = acp.client({ name: "pi-acp-adapter" })
+    connection = acp.client({ name: "pi-acp-delegate" })
       .onNotification(acp.methods.client.session.update, context => {
         collector.accept(context.params.update);
       })

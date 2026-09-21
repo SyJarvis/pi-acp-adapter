@@ -9,7 +9,7 @@ Set `ADAPTER_ROOT` to your adapter checkout, install its dependencies, and run
 the launcher while your shell is in any target repository:
 
 ```sh
-ADAPTER_ROOT=/path/to/pi-acp-adapter
+ADAPTER_ROOT=/path/to/pi-acp-delegate
 (cd "$ADAPTER_ROOT" && npm install)
 
 cd /path/to/target-repository
