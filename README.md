@@ -8,19 +8,33 @@ A Pi extension that delegates one focused task to a short-lived Agent Client Pro
 - Pi
 - Authentication and model configuration required by the selected ACP agent
 
-## Install locally
+## Install
 
-From this repository:
+Install the published package from npm:
 
 ```sh
-npm install
-pi install /Users/mac/research/projects/pi-acp-adapter
+pi install npm:pi-acp-adapter
 ```
 
-Pi records the local package path in its settings. The package manifest loads `index.ts` through `pi.extensions`. For a one-off run without changing Pi settings:
+For a temporary trial without changing Pi settings:
 
 ```sh
-pi -e /Users/mac/research/projects/pi-acp-adapter
+pi -e npm:pi-acp-adapter
+```
+
+For source or local development:
+
+```sh
+git clone https://github.com/SyJarvis/pi-acp-adapter.git
+cd pi-acp-adapter
+npm install
+pi install .
+```
+
+Pi records the local package path in its settings. The package manifest loads `index.ts` through `pi.extensions`. For a local one-off run without changing Pi settings:
+
+```sh
+pi -e .
 ```
 
 Inside Pi, `/acp` shows the resolved agent command and current active invocation count. The model can call the single `acp_delegate` tool with a required, nonblank `task`.
@@ -56,7 +70,7 @@ export PI_ACP_COMMAND=/path/to/acp-agent
 export PI_ACP_ARGS='["--stdio"]'
 export PI_ACP_ENV='{"CUSTOM_AGENT_MODEL":"your-configured-model"}'
 export PI_ACP_LABEL='Custom ACP'
-pi -e /Users/mac/research/projects/pi-acp-adapter
+pi -e .
 ```
 
 ## Permissions and security
@@ -101,7 +115,7 @@ These commands invoke real model-backed agents and can consume credentials or qu
 Default Codex ACP:
 
 ```sh
-pi -e /Users/mac/research/projects/pi-acp-adapter
+pi -e .
 ```
 
 In Pi, run `/acp`, then ask Pi to call `acp_delegate` with a small read-only task such as returning a one-sentence description of the current repository.
