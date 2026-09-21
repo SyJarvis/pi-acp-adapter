@@ -110,6 +110,10 @@ npm pack --dry-run
 
 The test fixture is an SDK-based ACP agent. It covers protocol negotiation, absolute working directories, streamed text, optional close, exact permission outcomes, cancellation and forced process termination, malformed/early transport failures, shutdown fencing, configuration parsing, and output bounds.
 
+## Maintainer documentation
+
+See [Publishing a Pi Package](docs/publishing.md) for the npm, runtime verification, tagging, release, and gallery indexing procedure.
+
 ## Real smoke tests
 
 These commands invoke real model-backed agents and can consume credentials or quota. Confirm the corresponding agent is authenticated and has a model configured before running them.
