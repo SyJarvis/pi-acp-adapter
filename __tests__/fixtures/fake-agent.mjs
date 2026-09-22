@@ -28,7 +28,10 @@ if (mode === "malformed") {
       return {
         protocolVersion: mode === "protocol-mismatch" ? acp.PROTOCOL_VERSION + 1 : acp.PROTOCOL_VERSION,
         agentCapabilities: {
-          sessionCapabilities: mode === "no-close" ? {} : { close: {} },
+          sessionCapabilities: {
+            ...(mode === "no-resume" ? {} : { resume: {} }),
+            ...(mode === "no-close" ? {} : { close: {} }),
+          },
         },
         agentInfo: { name: "pi-acp-test-agent", version: "1.0.0" },
       };
@@ -39,6 +42,13 @@ if (mode === "malformed") {
         throw acp.RequestError.internalError("actionable fixture detail");
       }
       return { sessionId };
+    })
+    .onRequest(acp.methods.agent.session.resume, ({ params }) => {
+      log("session/resume", params);
+      if (mode === "resume-error") {
+        throw acp.RequestError.internalError("fixture cannot resume that session");
+      }
+      return {};
     })
     .onRequest(acp.methods.agent.session.prompt, async ({ params, client }) => {
       log("session/prompt", params);
