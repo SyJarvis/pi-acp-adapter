@@ -1,7 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
+import { lifecycleUpdate } from "./lifecycle.ts";
 
 const MAX_FINAL_CHARS = 50_000;
-const MAX_PROGRESS_CHARS = 4_000;
 const MAX_EVENT_TEXT_CHARS = 500;
 const MAX_EVENTS = 64;
 const UPDATE_INTERVAL_MS = 100;
@@ -128,13 +128,6 @@ export class UpdateCollector {
     if (this.#timer) clearTimeout(this.#timer);
     this.#timer = undefined;
     if (!this.#onUpdate || !this.#isCurrent()) return;
-    const last = this.#events.at(-1);
-    const progress = this.#message
-      ? this.#message.slice(-MAX_PROGRESS_CHARS)
-      : last?.text ?? last?.kind ?? "ACP agent is working";
-    this.#onUpdate({
-      content: [{ type: "text", text: progress }],
-      details: this.snapshot(),
-    });
+    this.#onUpdate(lifecycleUpdate("running", this.#agent, this.#cwd));
   }
 }

@@ -21,7 +21,10 @@ describe("UpdateCollector", () => {
     expect(updates).not.toHaveBeenCalled();
     vi.advanceTimersByTime(100);
     expect(updates).toHaveBeenCalledTimes(1);
-    expect(updates.mock.calls[0]![0].content[0].text.length).toBeLessThanOrEqual(4_000);
+    expect(updates.mock.calls[0]![0]).toEqual({
+      content: [{ type: "text", text: "ACP delegation running." }],
+      details: { agent: "Agent", cwd: "/tmp/project", updates: [] },
+    });
 
     const result = collector.finish("end_turn");
     expect(result.text).toHaveLength(50_000);

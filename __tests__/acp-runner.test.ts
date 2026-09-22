@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as acp from "@agentclientprotocol/sdk";
-import { afterEach, describe, expect, it } from "vitest";
-import { runAcpTask } from "../src/acp-runner.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanupAcpResources, runAcpTask } from "../src/acp-runner.ts";
+import type { EstablishedAcpSession } from "../src/acp-runner.ts";
 import type { AgentConfig } from "../src/config.ts";
 import { AcpAdapterError, AcpCancelledError } from "../src/errors.ts";
 import { requestPermissionFromPi } from "../src/permissions.ts";
@@ -52,6 +53,7 @@ describe("runAcpTask", () => {
   it("runs the ACP v1 happy flow and closes an advertised session", async () => {
     const fixtureProcess = fixtureRun("happy");
     let child: ChildProcessWithoutNullStreams | undefined;
+    let established: EstablishedAcpSession | undefined;
 
     const result = await runAcpTask({
       task: "  inspect the project  ",
@@ -59,6 +61,7 @@ describe("runAcpTask", () => {
       config: fixtureProcess.config,
       requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
       onSpawn: spawned => { child = spawned; },
+      onSessionEstablished: session => { established = session; },
     });
 
     expect(result.text).toBe("hello world");
@@ -68,6 +71,7 @@ describe("runAcpTask", () => {
       stopReason: "end_turn",
     });
     expect(result.details).not.toHaveProperty("stderr");
+    expect(established).toEqual({ sessionId: "fake-session", resumable: true });
     expect(child?.exitCode !== null || child?.signalCode !== null).toBe(true);
 
     const events = fixtureProcess.readEvents();
@@ -75,7 +79,7 @@ describe("runAcpTask", () => {
     expect(initialize).toMatchObject({
       protocolVersion: acp.PROTOCOL_VERSION,
     });
-    expect(initialize?.clientInfo).toEqual({ name: "pi-acp-delegate", version: "0.1.0" });
+    expect(initialize?.clientInfo).toEqual({ name: "pi-acp-delegate", version: "0.2.0" });
     expect(events.find(event => event.event === "session/new")).toMatchObject({
       cwd: process.cwd(),
       mcpServers: [],
@@ -87,6 +91,88 @@ describe("runAcpTask", () => {
     expect(events.find(event => event.event === "session/close")).toMatchObject({
       sessionId: "fake-session",
     });
+  });
+
+  it("resumes a supplied session without creating or loading one", async () => {
+    const fixtureProcess = fixtureRun("happy");
+    const result = await runAcpTask({
+      task: "continue the work",
+      cwd: process.cwd(),
+      config: fixtureProcess.config,
+      sessionId: "persisted-session",
+      requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
+    });
+
+    expect(result.text).toBe("hello world");
+    const events = fixtureProcess.readEvents();
+    expect(events.find(event => event.event === "session/resume")).toMatchObject({
+      sessionId: "persisted-session",
+      cwd: process.cwd(),
+      mcpServers: [],
+    });
+    expect(events.some(event => event.event === "session/new")).toBe(false);
+    expect(events.some(event => event.event === "session/load")).toBe(false);
+    expect(events.find(event => event.event === "session/prompt")).toMatchObject({
+      sessionId: "persisted-session",
+    });
+    expect(events.find(event => event.event === "session/close")).toMatchObject({
+      sessionId: "persisted-session",
+    });
+  });
+
+  it("keeps new sessions stateless when resume is not advertised", async () => {
+    const fixtureProcess = fixtureRun("no-resume");
+    let established: EstablishedAcpSession | undefined;
+
+    const result = await runAcpTask({
+      task: "one shot",
+      cwd: process.cwd(),
+      config: fixtureProcess.config,
+      requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
+      onSessionEstablished: session => { established = session; },
+    });
+
+    expect(result.text).toBe("hello world");
+    expect(established).toEqual({ sessionId: "fake-session", resumable: false });
+    expect(fixtureProcess.readEvents().some(event => event.event === "session/new")).toBe(true);
+  });
+
+  it("rejects a stored session when resume is no longer advertised", async () => {
+    const fixtureProcess = fixtureRun("no-resume");
+    let child: ChildProcessWithoutNullStreams | undefined;
+
+    await expect(runAcpTask({
+      task: "continue",
+      cwd: process.cwd(),
+      config: fixtureProcess.config,
+      sessionId: "persisted-session",
+      requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
+      onSpawn: spawned => { child = spawned; },
+    })).rejects.toThrow("does not advertise session/resume");
+
+    const events = fixtureProcess.readEvents();
+    expect(events.some(event => event.event === "session/new")).toBe(false);
+    expect(events.some(event => event.event === "session/prompt")).toBe(false);
+    expect(child?.exitCode !== null || child?.signalCode !== null).toBe(true);
+  });
+
+  it("propagates session/resume failure without creating a replacement", async () => {
+    const fixtureProcess = fixtureRun("resume-error");
+
+    await expect(runAcpTask({
+      task: "continue",
+      cwd: process.cwd(),
+      config: fixtureProcess.config,
+      sessionId: "missing-session",
+      requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
+    })).rejects.toThrow(
+      /Failed to resume stored ACP session "missing-session".*fixture cannot resume that session/s,
+    );
+
+    const events = fixtureProcess.readEvents();
+    expect(events.some(event => event.event === "session/resume")).toBe(true);
+    expect(events.some(event => event.event === "session/new")).toBe(false);
+    expect(events.some(event => event.event === "session/prompt")).toBe(false);
   });
 
   it("does not close a session when close is not advertised", async () => {
@@ -142,6 +228,7 @@ describe("runAcpTask", () => {
       const fixtureProcess = fixtureRun(mode);
       const controller = new AbortController();
       let child: ChildProcessWithoutNullStreams | undefined;
+      let established: EstablishedAcpSession | undefined;
       const run = runAcpTask({
         task: "wait",
         cwd: process.cwd(),
@@ -149,6 +236,7 @@ describe("runAcpTask", () => {
         signal: controller.signal,
         requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
         onSpawn: spawned => { child = spawned; },
+        onSessionEstablished: session => { established = session; },
       });
 
       await waitForEvent(fixtureProcess.readEvents, "session/prompt");
@@ -159,6 +247,10 @@ describe("runAcpTask", () => {
       expect(events.find(event => event.event === "session/cancel")).toMatchObject({
         sessionId: "fake-session",
       });
+      expect(events.find(event => event.event === "session/close")).toMatchObject({
+        sessionId: "fake-session",
+      });
+      expect(established).toEqual({ sessionId: "fake-session", resumable: true });
       expect(child?.exitCode !== null || child?.signalCode !== null).toBe(true);
       if (mode === "ignore-term") {
         expect(events.some(event => event.event === "sigterm")).toBe(true);
@@ -213,6 +305,39 @@ describe("runAcpTask", () => {
       expect(error.stderr?.length).toBeLessThanOrEqual(2_024);
     },
   );
+});
+
+describe("cleanupAcpResources", () => {
+  it("continues transport and process cleanup after every session-close failure mode", async () => {
+    const closeFailures: Array<() => Promise<unknown>> = [
+      () => { throw new Error("synchronous close failure"); },
+      () => Promise.reject(new Error("asynchronous close failure")),
+      () => new Promise(() => {}),
+    ];
+
+    for (const closeSession of closeFailures) {
+      const calls: string[] = [];
+      await cleanupAcpResources({
+        closeSession: () => {
+          calls.push("session");
+          return closeSession();
+        },
+        closeConnection: () => { calls.push("connection"); },
+        terminateProcess: async () => { calls.push("process"); },
+      }, 1);
+      expect(calls).toEqual(["session", "connection", "process"]);
+    }
+  });
+
+  it("still terminates the process when transport closure throws synchronously", async () => {
+    const terminateProcess = vi.fn(async () => {});
+
+    await expect(cleanupAcpResources({
+      closeConnection: () => { throw new Error("transport close failure"); },
+      terminateProcess,
+    })).rejects.toThrow("transport close failure");
+    expect(terminateProcess).toHaveBeenCalledOnce();
+  });
 });
 
 async function waitForEvent(readEvents: () => FixtureEvent[], name: string): Promise<void> {

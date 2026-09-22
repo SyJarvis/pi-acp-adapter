@@ -4,7 +4,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import * as acp from "@agentclientprotocol/sdk";
 import type { AgentConfig } from "./config.ts";
 import { AcpProcess } from "./acp-process.ts";
-import { AcpAdapterError, AcpCancelledError, asAdapterError } from "./errors.ts";
+import { AcpAdapterError, AcpCancelledError, asAdapterError, errorMessage } from "./errors.ts";
 import {
   UpdateCollector,
   type AcpDelegateDetails,
@@ -13,11 +13,16 @@ import {
 
 const CANCEL_GRACE_MS = 300;
 const CLOSE_GRACE_MS = 300;
-const CLIENT_INFO: acp.Implementation = { name: "pi-acp-delegate", version: "0.1.0" };
+const CLIENT_INFO: acp.Implementation = { name: "pi-acp-delegate", version: "0.2.0" };
 
 export interface AcpRunResult {
   readonly text: string;
   readonly details: AcpDelegateDetails;
+}
+
+export interface EstablishedAcpSession {
+  readonly sessionId: string;
+  readonly resumable: boolean;
 }
 
 export interface AcpRunOptions {
@@ -31,6 +36,8 @@ export interface AcpRunOptions {
   ) => Promise<acp.RequestPermissionResponse>;
   readonly isCurrent?: () => boolean;
   readonly onSpawn?: (child: ChildProcessWithoutNullStreams) => void;
+  readonly sessionId?: string;
+  readonly onSessionEstablished?: (session: EstablishedAcpSession) => void;
 }
 
 function delay(ms: number): Promise<void> {
@@ -55,6 +62,30 @@ async function boundedRequest<T>(request: Promise<T>, timeoutMs: number): Promis
   return Promise.race([request, delay(timeoutMs).then(() => undefined)]);
 }
 
+interface AcpCleanupResources {
+  readonly closeSession?: () => Promise<unknown>;
+  readonly closeConnection?: () => void;
+  readonly terminateProcess?: () => Promise<unknown>;
+}
+
+/** @internal Exported for focused cleanup regression tests. */
+export async function cleanupAcpResources(
+  resources: AcpCleanupResources,
+  closeGraceMs = CLOSE_GRACE_MS,
+): Promise<void> {
+  if (resources.closeSession) {
+    await boundedRequest(
+      Promise.resolve().then(resources.closeSession),
+      closeGraceMs,
+    ).catch(() => undefined);
+  }
+  try {
+    resources.closeConnection?.();
+  } finally {
+    if (resources.terminateProcess) await resources.terminateProcess();
+  }
+}
+
 export async function runAcpTask(options: AcpRunOptions): Promise<AcpRunResult> {
   const task = options.task.trim();
   if (!task) throw new AcpAdapterError("task must contain non-whitespace text");
@@ -69,6 +100,7 @@ export async function runAcpTask(options: AcpRunOptions): Promise<AcpRunResult> 
   let process: AcpProcess | undefined;
   let connection: ReturnType<ReturnType<typeof acp.client>["connect"]> | undefined;
   let sessionId: string | undefined;
+  let closeSession: (() => Promise<unknown>) | undefined;
   let cancelled = false;
   let cancelSent = false;
 
@@ -109,11 +141,47 @@ export async function runAcpTask(options: AcpRunOptions): Promise<AcpRunResult> 
       );
     }
 
-    const session = await requestBeforeAbort(agent.request(acp.methods.agent.session.new, {
-      cwd,
-      mcpServers: [],
-    }), options.signal);
-    sessionId = session.sessionId;
+    const supportsResume = initialized.agentCapabilities?.sessionCapabilities?.resume != null;
+    const supportsClose = initialized.agentCapabilities?.sessionCapabilities?.close != null;
+    if (options.sessionId) {
+      if (!supportsResume) {
+        throw new AcpAdapterError(
+          `Stored ACP session "${options.sessionId}" cannot be resumed because ` +
+            `${options.config.label} does not advertise session/resume. Run /acp new to reset it.`,
+        );
+      }
+      try {
+        await requestBeforeAbort(agent.request(acp.methods.agent.session.resume, {
+          sessionId: options.sessionId,
+          cwd,
+          mcpServers: [],
+        }), options.signal);
+      } catch (error) {
+        if (error instanceof AcpCancelledError || options.signal?.aborted) throw error;
+        throw new AcpAdapterError(
+          `Failed to resume stored ACP session "${options.sessionId}": ${errorMessage(error)}`,
+          undefined,
+          { cause: error instanceof Error ? error : undefined },
+        );
+      }
+      sessionId = options.sessionId;
+    } else {
+      const session = await requestBeforeAbort(agent.request(acp.methods.agent.session.new, {
+        cwd,
+        mcpServers: [],
+      }), options.signal);
+      sessionId = session.sessionId;
+      if (supportsClose) {
+        closeSession = () => agent.request(acp.methods.agent.session.close, { sessionId: session.sessionId });
+      }
+      options.onSessionEstablished?.({ sessionId, resumable: supportsResume });
+    }
+    if (supportsClose && !closeSession) {
+      const establishedSessionId = sessionId;
+      closeSession = () => agent.request(acp.methods.agent.session.close, {
+        sessionId: establishedSessionId,
+      });
+    }
 
     const sendCancel = async () => {
       if (cancelSent || !sessionId) return;
@@ -160,12 +228,6 @@ export async function runAcpTask(options: AcpRunOptions): Promise<AcpRunResult> 
     if (cancelled || options.signal?.aborted) throw new AcpCancelledError();
     if (!promptResult) throw new AcpAdapterError("ACP prompt ended without a response");
 
-    if (initialized.agentCapabilities?.sessionCapabilities?.close != null) {
-      await boundedRequest(
-        agent.request(acp.methods.agent.session.close, { sessionId }),
-        CLOSE_GRACE_MS,
-      );
-    }
     const final = collector.finish(promptResult.stopReason);
     return { text: final.text, details: final.details };
   } catch (error) {
@@ -174,7 +236,14 @@ export async function runAcpTask(options: AcpRunOptions): Promise<AcpRunResult> 
     }
     throw asAdapterError(error, process?.stderr ?? "");
   } finally {
-    connection?.close();
-    if (process) await process.terminate();
+    const connectionToClose = connection;
+    const processToTerminate = process;
+    await cleanupAcpResources({
+      ...(closeSession ? { closeSession } : {}),
+      ...(connectionToClose ? { closeConnection: () => connectionToClose.close() } : {}),
+      ...(processToTerminate
+        ? { terminateProcess: () => processToTerminate.terminate() }
+        : {}),
+    });
   }
 }
